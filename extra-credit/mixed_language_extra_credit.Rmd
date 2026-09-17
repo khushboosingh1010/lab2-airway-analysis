@@ -1,0 +1,102 @@
+---
+title: "Lab 2: Mixed-language extra credit"
+author: "Khushboo Singh"
+date: "2026-09-17"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(reticulate)
+python_path <- Sys.getenv("RETICULATE_PYTHON")
+if (nzchar(python_path)) {
+  use_python(python_path, required = TRUE)
+}
+```
+## Python: load data and calculate group means
+
+```{python}
+import pandas as pd
+
+url = (
+    "https://www.ncbi.nlm.nih.gov/geo/download/"
+    "?acc=GSE52778&format=file&file=GSE52778_All_Sample_FPKM_Matrix.txt.gz"
+)
+
+fpkm = pd.read_csv(url, sep=r"\s+", compression="gzip")
+
+dex_columns = ["Dex_LL14", "Dex_LL06", "Dex_LL02", "Dex_LL10"]
+untreated_columns = [
+    "Untreated_LL09", "Untreated_LL05",
+    "Untreated_LL13", "Untreated_LL01"
+]
+
+group_means = fpkm[["gene_short_name"]].copy()
+group_means["mean_dex"] = fpkm[dex_columns].mean(axis=1)
+group_means["mean_untreated"] = fpkm[untreated_columns].mean(axis=1)
+
+print(group_means.head())
+```
+## R: receive the Python table and calculate fold changes
+
+```{r}
+analysis <- py$group_means
+
+stopifnot(is.data.frame(analysis), nrow(analysis) == 23273)
+
+analysis$log2_fold_change <- log2(
+  (analysis$mean_dex + 0.1) /
+  (analysis$mean_untreated + 0.1)
+)
+
+expressed_genes <- analysis[
+  (analysis$mean_dex >= 1) |
+  (analysis$mean_untreated >= 1),
+]
+
+top_genes <- head(
+  expressed_genes[
+    order(abs(expressed_genes$log2_fold_change), decreasing = TRUE),
+  ],
+  10
+)
+
+knitr::kable(top_genes, digits = 3, row.names = FALSE)
+```
+## R: plot the results received from Python
+
+```{r mixed-plot, fig.width=10, fig.height=7}
+plot_data <- top_genes[
+  order(top_genes$log2_fold_change),
+]
+
+par(mar = c(6, 8, 4, 2))
+
+barplot(
+  plot_data$log2_fold_change,
+  names.arg = plot_data$gene_short_name,
+  horiz = TRUE,
+  las = 1,
+  col = "steelblue",
+  border = NA,
+  main = "Top 10 gene records by absolute log2 fold change",
+  xlab = "Log2 fold change (treated / untreated; pseudocount = 0.1)"
+)
+
+abline(v = 0, col = "black")
+
+mtext(
+  "Higher in untreated cells (left) | Higher in treated cells (right)",
+  side = 1,
+  line = 4,
+  cex = 0.85
+)
+```
+
+## How the languages worked together
+
+Python loaded the dataset and calculated the treated and untreated group means. Using reticulate, `py$group_means` passed the Python table into R. R used that table to calculate log2 fold changes, select the top ten gene records, and create the plot.
+
+## AI Assistance
+
+I used OpenAI ChatGPT to help write the Python and R chunks, explain the data transfer through reticulate, and troubleshoot Python environment selection.
