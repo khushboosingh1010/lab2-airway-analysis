@@ -1,0 +1,158 @@
+---
+title: 'Lab 2: Gene Expression in Human Airway Cells'
+author: "Khushboo Singh"
+date: "2026-09-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Research question
+
+Which genes have the largest differences in average expression between dexamethasone-treated and untreated human airway smooth-muscle cells?
+
+## Data source
+
+The processed FPKM gene-expression matrix will be downloaded directly from NCBI GEO study GSE52778.
+
+## Analysis plan
+
+Calculate average expression across four treated and four untreated samples. Calculate log2 fold changes using a pseudocount of 0.1, keep records with average expression of at least 1 FPKM in either group, and plot the ten largest absolute log2 fold changes. This is a descriptive comparison, not a statistical significance test.
+
+## Load the data
+
+```{r load-data}
+url <- paste0(
+  "https://www.ncbi.nlm.nih.gov/geo/download/",
+  "?acc=GSE52778&format=file&file=GSE52778_All_Sample_FPKM_Matrix.txt.gz"
+)
+
+raw_file <- tempfile(fileext = ".gz")
+download.file(url, raw_file, mode = "wb")
+
+fpkm <- read.table(
+  gzfile(raw_file),
+  header = TRUE,
+  sep = "",
+  stringsAsFactors = FALSE,
+  check.names = FALSE,
+  quote = "",
+  comment.char = ""
+)
+
+dim(fpkm)
+head(fpkm, 3)
+```
+
+## Calculate group averages
+
+```{r group-averages}
+dex_columns <- c("Dex_LL14", "Dex_LL06", "Dex_LL02", "Dex_LL10")
+
+untreated_columns <- c(
+  "Untreated_LL09",
+  "Untreated_LL05",
+  "Untreated_LL13",
+  "Untreated_LL01"
+)
+
+analysis <- fpkm
+
+analysis$mean_dex <- rowMeans(analysis[, dex_columns])
+analysis$mean_untreated <- rowMeans(analysis[, untreated_columns])
+
+head(analysis[, c("gene_short_name", "mean_dex", "mean_untreated")], 5)
+```
+
+## Compare treated and untreated expression
+
+```{r fold-change}
+analysis$log2_fold_change <- log2(
+  (analysis$mean_dex + 0.1) /
+  (analysis$mean_untreated + 0.1)
+)
+
+head(
+  analysis[, c(
+    "gene_short_name",
+    "mean_dex",
+    "mean_untreated",
+    "log2_fold_change"
+  )],
+  5
+)
+```
+
+## Select the largest expression changes
+
+```{r top-records}
+expressed_genes <- analysis[
+  (analysis$mean_dex >= 1) |
+  (analysis$mean_untreated >= 1),
+]
+
+expressed_genes$absolute_change <- abs(
+  expressed_genes$log2_fold_change
+)
+
+ranked_genes <- expressed_genes[
+  order(expressed_genes$absolute_change, decreasing = TRUE),
+]
+
+top_genes <- head(ranked_genes, 10)
+
+top_genes[, c(
+  "gene_short_name",
+  "mean_dex",
+  "mean_untreated",
+  "log2_fold_change"
+)]
+```
+
+## Visualize the largest changes
+
+```{r expression-chart, fig.width=10, fig.height=7}
+plot_data <- top_genes[
+  order(top_genes$log2_fold_change),
+]
+
+par(mar = c(6, 8, 4, 2))
+
+barplot(
+  plot_data$log2_fold_change,
+  names.arg = plot_data$gene_short_name,
+  horiz = TRUE,
+  las = 1,
+  col = "steelblue",
+  border = NA,
+  main = "Top 10 gene records by absolute log2 fold change",
+  xlab = "Log2 fold change (treated / untreated; pseudocount = 0.1)"
+)
+
+abline(v = 0, col = "black")
+
+mtext(
+  "Higher in untreated cells (left) | Higher in treated cells (right)",
+  side = 1,
+  line = 4,
+  cex = 0.85
+)
+```
+
+
+## Interpretation
+
+I observed higher average expression of FTL in treated cells.
+I observed lower average expression of SNORD54 in treated cells.
+When one group’s average was zero, the calculated fold change was sensitive to the pseudocount of 0.1.
+This analysis compared average expression but did not test statistical significance.
+
+## Python–R comparison
+
+There were matching group mean values, the top ten values, and the log2 fold changes between Python and R. The outputs seem equally reliable since the methods used were identical; however, none of the analyses checked for significance, and zero values made some of the fold changes susceptible to the pseudocount value. Python was faster for me to write because I am more familiar with its syntax, which made selecting columns and calculating group averages easier for me.
+
+## AI Assistance
+
+I used OpenAI ChatGPT to help write and explain the R code for downloading and loading the dataset, calculating group averages and log2 fold changes, filtering and ranking gene records. I ran the R code and compared the displayed results with Python. Further details of AI assistance are documented in AI_USAGE.md.
